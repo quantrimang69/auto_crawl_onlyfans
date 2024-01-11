@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Video</title>
+</head>
+
+<body>
+    <h2 style="text-align: center; color: rgb(230,153,77);">New Video</h2>
+    <p>This is the auto-generated email. Please update the new videos to your website. Hope you have a great day!</p>
+    <% if (Array.isArray(diffData) && diffData.length> 0) { %>
+        <table border="1">
+            <tr>
+                <th style="background-color: rgb(230,153,77); color: ghostwhite;">No.</th>
+                <th style="background-color: rgb(230,153,77); color: ghostwhite;">Source</th>
+                <th style="background-color: rgb(230,153,77); color: ghostwhite;">Href</th>
+                <th style="background-color: rgb(230,153,77); color: ghostwhite;">Title</th>
+                <th style="background-color: rgb(230,153,77); color: ghostwhite;">Date</th>
+            </tr>
+
+            <% diffData.forEach((record, index)=> { %>
+                <tr>
+                    <td>
+                        <%= index + 1 %>
+                    </td>
+                    <td>
+                        <%= record.source %>
+                    </td>
+                    <td>
+                        <a href="<%= record.href %>" target="_blank">
+                            <%= record.href %>
+                        </a>
+                    </td>
+                    <td>
+                        <%= record.title %>
+                    </td>
+                    <td>
+                        <%= record.date %>
+                    </td>
+                </tr>
+                <% }); %>
+        </table>
+        <% } else { %>
+            <p>
+                <b>
+                    <%=diffData%>
+                </b>
+
+            </p>
+            <% } %>
+</body>
+
+</html>
