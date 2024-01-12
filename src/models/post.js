@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const moment = require('moment');
 // Define the schema
-const VideoSchema = new mongoose.Schema({
+const PostSchema = new mongoose.Schema({
   source: {
     type: String,
     required: true
@@ -10,7 +10,15 @@ const VideoSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  title: {
+  nameSite: {
+    type: String,
+    required: true
+  },
+  nameActor: {
+    type: String,
+    required: true
+  },
+  nameFile: {
     type: String,
     required: true
   },
@@ -21,7 +29,7 @@ const VideoSchema = new mongoose.Schema({
 });
 
 // Create the model
-const Video = mongoose.model('Video', VideoSchema);
+const Post = mongoose.model('Post', PostSchema);
 
 // Export the model
-module.exports = Video;
+module.exports = Post;

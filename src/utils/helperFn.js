@@ -1,6 +1,8 @@
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 const ejs = require('ejs');
+const fs = require('fs');
+const path = require('path');
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -32,4 +34,11 @@ exports.sendEmail = async (diffData) => {
       console.log('Email sent to:', mailOptions.to);
     }
   });
+}
+
+exports.createFolderStructureIfNotExists = (imagePath) => {
+  const folderPath = path.dirname(imagePath);
+  if (!fs.existsSync(folderPath)) {
+    fs.mkdirSync(folderPath, { recursive: true });
+  }
 }

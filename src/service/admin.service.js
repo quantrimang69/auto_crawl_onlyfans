@@ -7,13 +7,9 @@ const cheerio = require('cheerio');
 const helperFn = require('../utils/helperFn');
 const puppeteer = require('puppeteer');
 const {RESPONSE} = require('../constants/constants');
-const { MongoClient } = require('mongodb');
-var ProgressBar = require('progress');
-const {
-  crawPageFapello,dataPageFapello
-} = require('../utils/crawlPage');
+const { createProgressBar, updateProgressBar, terminateProgressBar } = require('../utils/progressBarUtil');
 const https = require('https')
-const VideoModel = require('../models/video');
+const PostModel = require('../models/post');
 
 const today = moment().toDate();
 
@@ -25,20 +21,30 @@ const instance = axios.create({
 
 const websitesToCrawl = [
   {
-    websiteURL: 'https://fapello.com/raelilblack/',
+    source: 'https://fapello.com/raelilblack/',
+    nameSite: 'fapello',
+    nameActor: 'Rae Lil Black',
     tagToCrawl: 'div#content div a',
+    tagToCrawlSinglePost: 'a.uk-align-center img',
   },
+  {
+    source: 'https://fapello.com/gabbie-carter-1/',
+    nameSite: 'fapello',
+    nameActor: 'Gabbie Carter',
+    tagToCrawl: 'div#content div a',
+    tagToCrawlSinglePost: 'a.uk-align-center img',
+  },
+
 ];
 
-async function crawlPage(url) {
-
+async function crawlPage(website) {
   const browser = await puppeteer.launch({headless: "new"});
   const page = await browser.newPage();
 
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.goto(website.source, { waitUntil: 'domcontentloaded' });
 
-  // let previousHeight;
-  // let currentHeight = 0;
+  let previousHeight;
+  let currentHeight = 0;
   // Scroll until no more content is loaded
   // while (previousHeight !== currentHeight) {
   //   previousHeight = currentHeight;
@@ -47,24 +53,24 @@ async function crawlPage(url) {
   //     return document.body.scrollHeight;
   //   });
 
-    // Wait for a short duration to let content load
-  //   await page.waitForTimeout444
-
-  const links = await page.evaluate((url, today,crawPageFapello) => {
+  //   // Wait for a short duration to let content load
+  //   await page.waitForTimeout(1000);
+  // }
+  const links = await page.evaluate(( today, website) => {
     const links = [];
-    document.querySelectorAll('div#content div a').forEach((element) => {
+    document.querySelectorAll(website.tagToCrawl).forEach((element) => {
       const href = element.getAttribute('href');
-      const title = 'Rae Lil Black';
       links.push({
-        source: url,
+        source: website.source,
         href,
-        title,
+        nameSite: website.nameSite,
+        nameActor: website.nameActor,
         date: today,
       });
     });
 
     return links;
-  }, url, today);
+  }, today, website);
 
   await browser.close();
 
@@ -74,9 +80,9 @@ async function crawlPage(url) {
 async function listVideos(websites) {
   const results = [];
 
-  for (const { websiteURL } of websites) {
+  for (const  website  of websites) {
     try {
-      const clipLinks = await crawlPage(websiteURL);
+      const clipLinks = await crawlPage(website);
       results.push(...clipLinks);
     } catch (error) {
       console.error('Error during crawling:', error);
@@ -101,11 +107,13 @@ async function crawlData(links) {
       const $ = cheerio.load(response.data);
       $('a.uk-align-center img').each(async (imgIndex, element) => {
         const href = $(element).attr('src');
-        const title = await convertName(href);
+        const nameFile = await convertName(href);
         data.push({
           source: link.source,
           href,
-          title: title,
+          nameSite: link.nameSite,
+          nameActor: link.nameActor,
+          nameFile,
           date: today,
         });
       });
@@ -119,17 +127,28 @@ async function crawlData(links) {
 
 
 
-async function saveImage(links) {
+async function saveImage(links,progressBarArray) {
   try {
-    for (const link of links) {
-        // const imagePath = `Resource/Fapello/${link.title}/${name}`;
-        const imagePath = `Resource/Fapello/test/${link.title}`;
+    for (let i = 0; i < links.length; i++) {
+      const link = links[i];
+
+        const imagePath = `Resource/${link.nameSite}/${link.nameActor}/${link.nameFile}`;
+        // const imagePath = `Resource/Fapello/test/${link.title}`;
+        helperFn.createFolderStructureIfNotExists(imagePath);
+        // Create a new progress bar for each image
+        progressBarArray[i] = createProgressBar(link.nameFile, 100);
         
         // Fetch image data using Axios
-        const response = await instance.get(link.href, { responseType: 'arraybuffer' });
+      const response = await axios.get(link.href, {
+        responseType: 'arraybuffer',
+        onDownloadProgress: (progressEvent) => {
+          // Update the individual progress bar for each image
+          updateProgressBar(progressBarArray[i], progressEvent);
+        },
+      });
         const buffer = Buffer.from(response.data, 'binary');
         fs.writeFileSync(imagePath, buffer);
-        console.log("Images saved successfully:" ,link.title);
+        terminateProgressBar(progressBarArray[i]);
     }
     console.log(`Done crawl all image. Happy Coding!`)
     return `Done crawl all image. Happy Coding!`;
@@ -142,47 +161,52 @@ async function saveImage(links) {
 
 
 async function storeNewDifference(clipLinks) {
-  const client = new MongoClient(process.env.MONGO_URI);
   try{
-    
-    const database = client.db('onlyfansleak'); // Specify the database name
-    const collection = database.collection('data'); // Specify the collection name
-    const videos = clipLinks.map(clipLink => new VideoModel({
+    const posts = clipLinks.map(clipLink => ({
       source: clipLink.source,
       href: clipLink.href,
-      title: clipLink.title,
+      nameSite: clipLink.nameSite,
+      nameActor: clipLink.nameActor,
+      nameFile: clipLink.nameFile,
       date: clipLink.date,
     }));
 
-    // Use insertMany for bulk insert
-    await collection.insertMany(videos);
+    // Use create for bulk insert using Mongoose model
+    await PostModel.create(posts);
   
     console.log('Data has been written to the Database');
   }catch (error) {
     console.error('Error saving data to Database:', error);
+    throw error;
   }
-  
+}
+
+async function deleteNewVideos(clipLinks) {
+
+  try {
+
+    const hrefValues = clipLinks.map(clipLink => clipLink.href);
+
+    // Delete documents where the href is in the array
+    const result = await PostModel.deleteMany({ href: { $in: hrefValues } });
+
+    return result;
+  } catch (error) {
+    console.error('Error deleting old videos:', error);
+    throw error;
+  }
 }
 
 
 async function readExistingData() {
-  const client = new MongoClient(process.env.MONGO_URI);
   try {
-    await client.connect();
-
-    const database = client.db('onlyfansleak'); // Specify the database name
-    const collection = database.collection('data'); // Specify the collection name
-
-    // Query all data from the collection
-    const result = await collection.find({}).toArray();
+    const result = await PostModel.find({});
     console.log('Total existing data:', result.length);
     return result;
   }catch (err) {
     console.error('Error reading videos:', err);
     throw err; // Re-throw the error to be caught by the calling code
-  } finally {
-    await client.close();
-  }
+  } 
 }
 
 
@@ -215,13 +239,10 @@ function findDifferences(newData, existingData) {
 
 
 async function deleteOldVideos() {
-  const client = new MongoClient(process.env.MONGO_URI);
   try {
-    const database = client.db('onlyfansleak'); // Specify the database name
-    const collection = database.collection('data'); // Specify the collection name
     const fiveDaysAgo = moment().subtract(5, 'days').toDate();
-    const now = moment().toDate();
-    const result = await collection.deleteMany({ date: { $lt: now} });
+    // const now = moment().toDate();
+    const result = await PostModel.deleteMany({ date: { $lt: fiveDaysAgo} });
 
     return result;
   } catch (error) {
@@ -237,18 +258,25 @@ const updateNewVideo = async (req) => {
     const newData = await crawlData(newListData);
     const existingData = await readExistingData();
     const difference = findDifferences(newData, existingData)
-    
-    // If there are differences, send an email and write the new data to the CSV file
+    // Create an array to store individual progress bars
+    const progressBarArray = Array.from({ length: difference.length });
+    // // If there are differences, send an email and write the new data to the CSV file
     if (difference.length > 0) {
-      // helperFn.sendEmail(difference);
-      saveImage(difference);
-      storeNewDifference(difference);
-      deleteOldVideos();
-      return RESPONSE.SEND_EMAIL_SUCCESSFULLY;
+      try {
+        // helperFn.sendEmail(difference);
+        await saveImage(difference,progressBarArray);
+        await storeNewDifference(difference);
+        await deleteOldVideos();
+        // return RESPONSE.SEND_EMAIL_SUCCESSFULLY;
+      }catch(error) {
+        // rollback logic
+        deleteNewVideos(difference);
+        throw error;
+      }
     }else {
-      // helperFn.sendEmail('No new video');
-      deleteOldVideos();
-      return RESPONSE.SEND_EMAIL_SUCCESSFULLY;
+    //   // helperFn.sendEmail('No new video');
+    //   deleteOldVideos();
+    //   return RESPONSE.SEND_EMAIL_SUCCESSFULLY;
     }
   } catch (error) {
     console.error('Error:', error);
@@ -257,7 +285,7 @@ const updateNewVideo = async (req) => {
 
 
 const getVideos = async (req) => {
-  const videos = await VideoModel.find({}).exec();
+  const videos = await PostModel.find({}).exec();
   helperFn.sendEmail(videos);
   if(videos.length === 0) return RESPONSE.NO_VIDEO;
   return videos;

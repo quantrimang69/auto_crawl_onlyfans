@@ -1,11 +1,8 @@
 module.exports = {
-   crawPageFapello:{
+  fapello:{
     websiteURL: 'https://fapello.com/raelilblack/',
     tagToCrawl: 'div#content div a',
+    tagToCrawlSinglePost: 'a.uk-align-center img',
   },
-  dataPageFapello:{
-    websiteURL: 'https://fapello.com/raelilblack/',
-    tagToCrawl: 'a.uk-align-center img',
-  }
 };
 
